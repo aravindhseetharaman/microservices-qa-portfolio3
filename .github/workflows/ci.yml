@@ -1,0 +1,91 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: pact_broker
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Start Pact Broker
+        run: |
+          docker run -d --name pact-broker \
+            -p 9292:9292 \
+            -e PACT_BROKER_DATABASE_ADAPTER=postgres \
+            -e PACT_BROKER_DATABASE_HOST=host.docker.internal \
+            -e PACT_BROKER_DATABASE_PORT=5432 \
+            -e PACT_BROKER_DATABASE_USERNAME=postgres \
+            -e PACT_BROKER_DATABASE_PASSWORD=password \
+            -e PACT_BROKER_DATABASE_NAME=pact_broker \
+            -e PACT_BROKER_ALLOW_PUBLIC_READ=true \
+            --add-host=host.docker.internal:host-gateway \
+            pactfoundation/pact-broker
+
+      - name: Wait for Pact Broker
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:9292 > /dev/null; then
+              echo "Pact Broker is up!"
+              break
+            fi
+            echo "Waiting for Pact Broker..."
+            sleep 2
+          done
+
+      - name: Run Student Service consumer test and publish
+        working-directory: studentservice
+        run: mvn test -Dtest=PaymentServiceContractTest
+
+      - name: Publish pact to Broker
+        run: |
+          docker run --rm --network host \
+            -v ${{ github.workspace }}/studentservice/target/pacts:/pacts \
+            pactfoundation/pact-cli:latest publish /pacts \
+            --consumer-app-version ${{ github.sha }} \
+            --broker-base-url http://localhost:9292
+
+      - name: Start Payment Service
+        working-directory: paymentservice
+        run: |
+          mvn spring-boot:run &
+          sleep 15
+
+      - name: Run Payment Service provider verification
+        working-directory: paymentservice
+        run: mvn test -Dtest=PaymentServiceProviderTest
+
+      - name: Check if deployable
+        run: |
+          docker run --rm --network host pactfoundation/pact-cli:latest broker can-i-deploy \
+            --pacticipant PaymentService \
+            --version ${{ github.sha }} \
+            --broker-base-url http://localhost:9292
+
