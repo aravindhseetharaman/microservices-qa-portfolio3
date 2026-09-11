@@ -21,10 +21,18 @@
 
         void before(PactVerificationContext context) {
             System.setProperty("pact.verifier.publishResults", "true");
-            System.setProperty("pact.provider.version", "1.0.0");
+
+            String version = System.getenv("GITHUB_SHA");
+            if (version == null) {
+                version = "1.0.0"; // fallback for local runs
+            }
+            System.setProperty("pact.provider.version", version);
+
             context.setTarget(new HttpTestTarget("localhost", 8585));
-           // context.setTarget(new HttpTestTarget("host.docker.internal", 8585));
-        }
+
+
+
+                  }
 
         @State("payment 1 exists")
         void paymentOneExists() {
