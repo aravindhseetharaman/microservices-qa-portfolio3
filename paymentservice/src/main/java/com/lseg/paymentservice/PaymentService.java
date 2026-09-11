@@ -6,6 +6,7 @@ import java.util.Map;
 
 @Service
 public class PaymentService {
+
     private Map<Integer, Payment> payments = new HashMap<>();
 
     public PaymentService() {

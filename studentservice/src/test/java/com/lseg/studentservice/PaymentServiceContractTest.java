@@ -28,7 +28,7 @@ class PaymentServiceContractTest {
                 .method("GET")
                 .willRespondWith()
                 .status(200)
-                .body("{\"id\":1,\"currency\":\"GBP\",\"status\":\"PAID\",\"amount\":90.0}")
+                .body("{\"id\":1,\"currency\":\"GBP\",\"status\":\"PAID\",\"amount\":90.0}", "application/json")
                 .toPact(V4Pact.class);
     }
 
